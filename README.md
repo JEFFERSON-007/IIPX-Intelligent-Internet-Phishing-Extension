@@ -131,5 +131,5 @@ Structural stubs and architectural foundations are implemented via the `MLAdapte
 ## Recent Activity
 
 <!--START_SECTION:activity-->
-1. 🚀 Published release [v1.0.0](https://github.com/JEFFERSON-007/PRISM-IDS/releases/tag/v1.0.0) in [JEFFERSON-007/PRISM-IDS](https://github.com/JEFFERSON-007/PRISM-IDS)
+1. 🗣 Commented on [#3121](https://github.com/sherlock-project/sherlock/issues/3121#issuecomment-5868705024) in [sherlock-project/sherlock](https://github.com/sherlock-project/sherlock)
 <!--END_SECTION:activity-->
