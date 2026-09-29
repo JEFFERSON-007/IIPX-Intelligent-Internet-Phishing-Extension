@@ -222,12 +222,3 @@ Contributions, issues, and feature requests are welcome. Feel free to check the 
 
 ### All Contributors
 * See the full list on [GitHub Contributors](https://github.com/JEFFERSON-007/IIPX-Intelligent-Internet-Phishing-Extension/graphs/contributors).
-
----
-
-## Recent Activity
-
-<!--START_SECTION:activity-->
-1. Commented on [#3121](https://github.com/sherlock-project/sherlock/issues/3121#issuecomment-5868705024) in [sherlock-project/sherlock](https://github.com/sherlock-project/sherlock)
-<!--END_SECTION:activity-->
-
