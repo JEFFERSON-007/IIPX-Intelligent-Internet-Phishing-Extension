@@ -1,8 +1,26 @@
 /**
  * Multi-Layer LRU Cache Module
- * High-performance bounded caching with Time-To-Live (TTL) expiration and memory optimization.
+ * High-performance bounded caching with Time-To-Live (TTL) expiration,
+ * implemented with an O(1) Doubly-Linked List + Hash Map LRU architecture.
  * @module MultiLayerCache
  */
+
+class LRUNode {
+  /**
+   * @param {string} key 
+   * @param {*} value 
+   * @param {number} timestamp 
+   */
+  constructor(key, value, timestamp) {
+    this.key = key;
+    this.value = value;
+    this.timestamp = timestamp;
+    /** @type {LRUNode|null} */
+    this.prev = null;
+    /** @type {LRUNode|null} */
+    this.next = null;
+  }
+}
 
 export class MultiLayerCache {
   /**
@@ -15,8 +33,15 @@ export class MultiLayerCache {
     this.maxEntries = maxEntries;
     /** @type {number} */
     this.ttlMs = ttlMs;
-    /** @type {Map<string, { value: *, timestamp: number }>} */
-    this.cache = new Map();
+
+    /** @type {Map<string, LRUNode>} */
+    this.map = new Map();
+
+    // Sentinels for O(1) doubly-linked list operations
+    this.head = new LRUNode('', null, 0);
+    this.tail = new LRUNode('', null, 0);
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
 
     /** @type {number} */
     this.hits = 0;
@@ -25,52 +50,90 @@ export class MultiLayerCache {
   }
 
   /**
-   * Retrieve item from cache if present and non-expired.
+   * Detach a node from its current position in the linked list.
+   * @private
+   * @param {LRUNode} node 
+   */
+  _detach(node) {
+    node.prev.next = node.next;
+    node.next.prev = node.prev;
+  }
+
+  /**
+   * Insert a node directly after the head sentinel (most recently used).
+   * @private
+   * @param {LRUNode} node 
+   */
+  _attachHead(node) {
+    node.next = this.head.next;
+    node.prev = this.head;
+    this.head.next.prev = node;
+    this.head.next = node;
+  }
+
+  /**
+   * Move an existing node to the head (most recently used).
+   * @private
+   * @param {LRUNode} node 
+   */
+  _moveToHead(node) {
+    this._detach(node);
+    this._attachHead(node);
+  }
+
+  /**
+   * Retrieve item from cache if present and non-expired in O(1) time.
    * @param {string} key 
    * @returns {*|null} Cached item value or null if expired/absent.
    */
   get(key) {
-    if (!this.cache.has(key)) {
+    const node = this.map.get(key);
+    if (!node) {
       this.misses++;
       return null;
     }
 
-    const item = this.cache.get(key);
     const now = Date.now();
-
-    if (now - item.timestamp > this.ttlMs) {
-      this.cache.delete(key);
+    if (now - node.timestamp > this.ttlMs) {
+      this._detach(node);
+      this.map.delete(key);
       this.misses++;
       return null;
     }
 
-    // Refresh key position for LRU semantics
-    this.cache.delete(key);
-    this.cache.set(key, item);
+    this._moveToHead(node);
     this.hits++;
-    return item.value;
+    return node.value;
   }
 
   /**
-   * Insert item into LRU cache.
+   * Insert or update item in LRU cache in O(1) time.
    * @param {string} key 
    * @param {*} value 
    */
   set(key, value) {
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    } else if (this.cache.size >= this.maxEntries) {
-      // Evict least recently used (first inserted key in Map)
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.cache.delete(oldestKey);
+    const now = Date.now();
+    let node = this.map.get(key);
+
+    if (node) {
+      node.value = value;
+      node.timestamp = now;
+      this._moveToHead(node);
+      return;
+    }
+
+    if (this.map.size >= this.maxEntries) {
+      // Evict least recently used (node right before tail sentinel)
+      const lruNode = this.tail.prev;
+      if (lruNode && lruNode !== this.head) {
+        this._detach(lruNode);
+        this.map.delete(lruNode.key);
       }
     }
 
-    this.cache.set(key, {
-      value,
-      timestamp: Date.now()
-    });
+    node = new LRUNode(key, value, now);
+    this.map.set(key, node);
+    this._attachHead(node);
   }
 
   /**
@@ -79,29 +142,38 @@ export class MultiLayerCache {
    * @returns {boolean}
    */
   has(key) {
-    if (!this.cache.has(key)) return false;
-    const item = this.cache.get(key);
-    if (Date.now() - item.timestamp > this.ttlMs) {
-      this.cache.delete(key);
+    const node = this.map.get(key);
+    if (!node) return false;
+
+    if (Date.now() - node.timestamp > this.ttlMs) {
+      this._detach(node);
+      this.map.delete(key);
       return false;
     }
+
     return true;
   }
 
   /**
-   * Delete entry.
+   * Delete entry in O(1) time.
    * @param {string} key 
    * @returns {boolean}
    */
   delete(key) {
-    return this.cache.delete(key);
+    const node = this.map.get(key);
+    if (!node) return false;
+
+    this._detach(node);
+    return this.map.delete(key);
   }
 
   /**
    * Clear all entries and reset stats.
    */
   clear() {
-    this.cache.clear();
+    this.map.clear();
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
     this.hits = 0;
     this.misses = 0;
   }
@@ -111,10 +183,15 @@ export class MultiLayerCache {
    */
   purgeExpired() {
     const now = Date.now();
-    for (const [key, item] of this.cache.entries()) {
-      if (now - item.timestamp > this.ttlMs) {
-        this.cache.delete(key);
+    let current = this.tail.prev;
+
+    while (current && current !== this.head) {
+      const prevNode = current.prev;
+      if (now - current.timestamp > this.ttlMs) {
+        this._detach(current);
+        this.map.delete(current.key);
       }
+      current = prevNode;
     }
   }
 
@@ -125,7 +202,7 @@ export class MultiLayerCache {
   getStats() {
     const total = this.hits + this.misses;
     return {
-      size: this.cache.size,
+      size: this.map.size,
       maxEntries: this.maxEntries,
       hits: this.hits,
       misses: this.misses,

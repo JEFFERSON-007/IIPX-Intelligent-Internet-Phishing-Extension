@@ -1,6 +1,6 @@
 /**
  * Comprehensive Test Runner Suite
- * Runs unit tests, integration tests, and edge case regression verifications.
+ * Runs unit tests, integration tests, and advanced DSA validation tests.
  * @module run-all-tests
  */
 
@@ -12,6 +12,9 @@ import { URLDetector } from '../detectors/url/URLDetector.js';
 import { DOMDetector } from '../detectors/dom/DOMDetector.js';
 import { MultiLayerCache } from '../cache/MultiLayerCache.js';
 import { RiskFusionEngine } from '../core/fusion/RiskFusionEngine.js';
+import { DomainTrie } from '../utils/DomainTrie.js';
+import { EntropyUtils } from '../utils/EntropyUtils.js';
+import { PunycodeUtils } from '../utils/PunycodeUtils.js';
 
 export async function runAllTests() {
   console.log('🧪 Starting Phishing Extension Test Suite...\n');
@@ -48,7 +51,73 @@ export async function runAllTests() {
     if (!res) throw new Error('testDetectionPipeline returned false');
   });
 
-  console.log('\n--- 3. Edge Case Regression Tests ---');
+  console.log('\n--- 3. Advanced DSA & Algorithm Verifications ---');
+
+  await assertAsync('DomainTrie: O(L) Suffix Subdomain Matching', () => {
+    const trie = new DomainTrie();
+    trie.insert('phishing-hub.com');
+    trie.insert('malicious.co.uk');
+
+    // Exact matches
+    if (!trie.match('phishing-hub.com').matched) throw new Error('Exact domain should match');
+    if (!trie.match('malicious.co.uk').matched) throw new Error('Exact multi-tld domain should match');
+
+    // Subdomain wildcard matches
+    if (!trie.match('login.phishing-hub.com').matched) throw new Error('Subdomain should match');
+    if (!trie.match('secure.portal.phishing-hub.com').matched) throw new Error('Deep subdomain should match');
+
+    // Negative / Non-matching domains
+    if (trie.match('safe-phishing-hub.com').matched) throw new Error('Prefix domain should not match');
+    if (trie.match('phishing-hub.org').matched) throw new Error('Different TLD should not match');
+    if (trie.match('google.com').matched) throw new Error('Unrelated domain should not match');
+  });
+
+  await assertAsync('EntropyUtils: Bounded Levenshtein & Shannon Entropy', () => {
+    // Exact & 1-edit distance
+    const dist1 = EntropyUtils.calculateLevenshteinDistance('paypal', 'paypa1', 2);
+    if (dist1 !== 1) throw new Error(`Expected edit distance 1, got ${dist1}`);
+
+    // Early exit cutoff
+    const distCutoff = EntropyUtils.calculateLevenshteinDistance('paypal', 'completelyunrelateddomain', 2);
+    if (distCutoff <= 2) throw new Error(`Cutoff expected > 2, got ${distCutoff}`);
+
+    // Shannon entropy
+    const entropy = EntropyUtils.calculateShannonEntropy('google.com');
+    if (entropy <= 0 || entropy >= 8) throw new Error(`Unexpected entropy value: ${entropy}`);
+  });
+
+  await assertAsync('PunycodeUtils: Inverted Confusables Map & Homograph Normalization', () => {
+    // Cyrillic 'а' (U+0430)
+    const detected = PunycodeUtils.detectHomographs('https://аmazon.com');
+    if (!detected.hasHomograph) throw new Error('Should detect Cyrillic homograph');
+    if (detected.detectedChars[0].mappedTo !== 'a') throw new Error('Should map to Latin "a"');
+
+    // Cyrillic 'р' (U+0440) -> 'p'
+    const normalized = PunycodeUtils.normalizeHomographs('рaypal.com');
+    if (normalized !== 'paypal.com') throw new Error(`Expected 'paypal.com', got '${normalized}'`);
+
+    // Substitution replacement (0 -> o, 1 -> l)
+    const replaced = PunycodeUtils.replaceSubstitutions('g00gle.com');
+    if (replaced !== 'google.com') throw new Error(`Expected 'google.com', got '${replaced}'`);
+  });
+
+  await assertAsync('MultiLayerCache: O(1) Doubly-Linked List Eviction', () => {
+    const cache = new MultiLayerCache(2, 60000); // Capacity 2
+    cache.set('a', 'valA');
+    cache.set('b', 'valB');
+
+    // Access 'a' to make it most recently used; 'b' is now least recently used
+    cache.get('a');
+
+    // Insert 'c' -> should evict 'b'
+    cache.set('c', 'valC');
+
+    if (cache.get('b') !== null) throw new Error('Expected "b" to be evicted');
+    if (cache.get('a') !== 'valA') throw new Error('Expected "a" to remain in cache');
+    if (cache.get('c') !== 'valC') throw new Error('Expected "c" to remain in cache');
+  });
+
+  console.log('\n--- 4. Edge Case Regression Tests ---');
   
   await assertAsync('URLDetector: Typosquatting (g00gle.com)', async () => {
     const detector = new URLDetector();

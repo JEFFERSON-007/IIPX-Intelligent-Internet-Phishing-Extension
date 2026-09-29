@@ -1,6 +1,7 @@
 /**
  * URL Detector Module
  * Comprehensive URL analysis inspecting encoding, Unicode, homographs, entropy, TLDs, and structure.
+ * Optimized with O(1) Set lookups, single-pass keyword regex, and bounded Levenshtein distance.
  * @module URLDetector
  */
 
@@ -11,7 +12,7 @@ import { PunycodeUtils } from '../../utils/PunycodeUtils.js';
 export class URLDetector extends DetectorInterface {
   constructor() {
     super();
-    /** @type {string[]} */
+    /** @type {Array<{ domain: string, label: string }>} */
     this.legitimateDomains = [
       'google.com', 'facebook.com', 'microsoft.com', 'apple.com', 'amazon.com',
       'twitter.com', 'instagram.com', 'youtube.com', 'linkedin.com', 'tiktok.com',
@@ -23,23 +24,19 @@ export class URLDetector extends DetectorInterface {
       label: domain.split('.')[0]
     }));
 
-    /** @type {string[]} */
-    this.suspiciousTLDs = [
+    /** @type {Set<string>} O(1) Suspicious TLD set */
+    this.suspiciousTLDs = new Set([
       '.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.work',
       '.live', '.site', '.online', '.club', '.bid', '.loan', '.zip', '.mov'
-    ];
+    ]);
 
-    /** @type {string[]} */
-    this.urlShorteners = [
+    /** @type {Set<string>} O(1) Shortener domain set */
+    this.urlShorteners = new Set([
       'bit.ly', 'tinyurl.com', 'goo.gl', 't.co', 'ow.ly', 'is.gd', 'buff.ly', 'adf.ly'
-    ];
+    ]);
 
-    /** @type {string[]} */
-    this.suspiciousKeywords = [
-      'verify', 'urgent', 'suspended', 'locked', 'limited', 'unusual',
-      'confirm', 'update', 'secure', 'expire', 'immediately', 'account-update',
-      'security-alert', 'billing-problem', 'reset-password', 'login-claim'
-    ];
+    /** @type {RegExp} Precompiled single-pass keyword matching regex */
+    this.suspiciousKeywordsRegex = /\b(verify|urgent|suspended|locked|limited|unusual|confirm|update|secure|expire|immediately|account-update|security-alert|billing-problem|reset-password|login-claim)\b/gi;
   }
 
   name() { return 'URLDetector'; }
@@ -147,7 +144,7 @@ export class URLDetector extends DetectorInterface {
         totalScore += 40;
       }
 
-      // 6. Typosquatting & Levenshtein Distance Check
+      // 6. Typosquatting & Bounded Levenshtein Distance Check
       const normalizedHost = PunycodeUtils.replaceSubstitutions(hostname);
       const hostLabels = hostname.split(/[.-]/);
       const normalizedLabels = normalizedHost.split(/[.-]/);
@@ -171,9 +168,10 @@ export class URLDetector extends DetectorInterface {
           if (rawLabel.length <= 3 && i === hostLabels.length - 1) continue;
 
           let minDistance = 999;
+          // Length-difference pruning
           if (Math.abs(rawLabel.length - brandLabel.length) <= 2) {
-            const rawDistance = EntropyUtils.calculateLevenshteinDistance(rawLabel, brandLabel);
-            const normDistance = EntropyUtils.calculateLevenshteinDistance(normLabel, brandLabel);
+            const rawDistance = EntropyUtils.calculateLevenshteinDistance(rawLabel, brandLabel, 2);
+            const normDistance = EntropyUtils.calculateLevenshteinDistance(normLabel, brandLabel, 2);
             minDistance = Math.min(rawDistance, normDistance);
           }
 
@@ -202,7 +200,7 @@ export class URLDetector extends DetectorInterface {
         }
       }
 
-      // 7. Shannon Entropy Analysis
+      // 7. Shannon Entropy Analysis (Zero-allocation fast path)
       const entropy = EntropyUtils.calculateShannonEntropy(hostname);
       if (entropy >= 4.3 && hostname.length > 10) {
         findings.push({
@@ -229,9 +227,11 @@ export class URLDetector extends DetectorInterface {
         totalScore += 15;
       }
 
-      // 9. Suspicious TLD Check
-      for (const tld of this.suspiciousTLDs) {
-        if (hostname.endsWith(tld)) {
+      // 9. Suspicious TLD Check in O(1) time
+      const lastDot = hostname.lastIndexOf('.');
+      if (lastDot !== -1) {
+        const tld = hostname.slice(lastDot);
+        if (this.suspiciousTLDs.has(tld)) {
           findings.push({
             id: 'URL_SUSPICIOUS_TLD',
             type: 'SUSPICIOUS_TLD',
@@ -240,12 +240,11 @@ export class URLDetector extends DetectorInterface {
             severity: 'MEDIUM'
           });
           totalScore += 15;
-          break;
         }
       }
 
-      // 10. URL Shortener Check
-      if (this.urlShorteners.includes(hostname)) {
+      // 10. URL Shortener Check in O(1) time
+      if (this.urlShorteners.has(hostname)) {
         findings.push({
           id: 'URL_SHORTENER',
           type: 'URL_SHORTENER',
@@ -256,13 +255,9 @@ export class URLDetector extends DetectorInterface {
         totalScore += 10;
       }
 
-      // 11. Keyword Stuffing Check
-      let keywordMatches = 0;
-      for (const keyword of this.suspiciousKeywords) {
-        if (rawUrl.toLowerCase().includes(keyword)) {
-          keywordMatches++;
-        }
-      }
+      // 11. Keyword Stuffing Check in single regex pass
+      const keywordMatchesList = rawUrl.match(this.suspiciousKeywordsRegex);
+      const keywordMatches = keywordMatchesList ? keywordMatchesList.length : 0;
       if (keywordMatches >= 2) {
         findings.push({
           id: 'URL_KEYWORD_STUFFING',

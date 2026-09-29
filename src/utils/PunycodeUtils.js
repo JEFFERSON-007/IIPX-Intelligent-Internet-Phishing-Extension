@@ -1,6 +1,7 @@
 /**
  * Punycode & Unicode Confusables Utility
- * Handles Punycode decoding (`xn--`), Unicode normalization (NFC/NFD), and homograph character mapping.
+ * High-performance Punycode decoding (`xn--`), Unicode normalization (NFC/NFD),
+ * and O(N) single-pass homograph character mapping using inverted lookup tables.
  * @module PunycodeUtils
  */
 
@@ -42,6 +43,40 @@ export class PunycodeUtils {
   });
 
   /**
+   * Precomputed inverted Map for O(1) character-to-Latin lookup.
+   * @type {Map<string, string>}
+   */
+  static _INVERTED_CONFUSABLES = (() => {
+    const map = new Map();
+    for (const [latinChar, lookalikes] of Object.entries(PunycodeUtils.CONFUSABLES)) {
+      for (const lookalike of lookalikes) {
+        map.set(lookalike, latinChar);
+      }
+    }
+    return map;
+  })();
+
+  /**
+   * Precomputed RegExp for single-pass replacement of all confusables.
+   * @type {RegExp}
+   */
+  static _CONFUSABLES_REGEX = (() => {
+    const allLookalikes = [];
+    for (const lookalikes of Object.values(PunycodeUtils.CONFUSABLES)) {
+      allLookalikes.push(...lookalikes);
+    }
+    // Escape regex special chars if any
+    const pattern = `[${allLookalikes.map(c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`).join('')}]`;
+    return new RegExp(pattern, 'g');
+  })();
+
+  /**
+   * Precomputed RegExp for single-pass replacement of visual substitutions.
+   * @type {RegExp}
+   */
+  static _SUBSTITUTIONS_REGEX = /[01345789@$]/g;
+
+  /**
    * Normalize string to standard NFC Unicode representation.
    * @param {string} str 
    * @returns {string}
@@ -78,7 +113,7 @@ export class PunycodeUtils {
   }
 
   /**
-   * Detect homograph spoofing characters in string.
+   * Detect homograph spoofing characters in string in a single O(N) pass.
    * @param {string} str 
    * @returns {{ hasHomograph: boolean, detectedChars: Array<{ original: string, mappedTo: string }> }}
    */
@@ -87,13 +122,17 @@ export class PunycodeUtils {
     if (!str || typeof str !== 'string') return result;
 
     const normalized = PunycodeUtils.normalizeUnicode(str);
+    const lookup = PunycodeUtils._INVERTED_CONFUSABLES;
+    const seen = new Set();
 
-    for (const [latinChar, lookalikes] of Object.entries(PunycodeUtils.CONFUSABLES)) {
-      for (const lookalike of lookalikes) {
-        if (normalized.includes(lookalike)) {
-          result.hasHomograph = true;
-          result.detectedChars.push({ original: lookalike, mappedTo: latinChar });
-        }
+    // Single-pass O(N) character traversal
+    for (let i = 0; i < normalized.length; i++) {
+      const char = normalized[i];
+      const mappedTo = lookup.get(char);
+      if (mappedTo !== undefined && !seen.has(char)) {
+        seen.add(char);
+        result.hasHomograph = true;
+        result.detectedChars.push({ original: char, mappedTo });
       }
     }
 
@@ -101,34 +140,26 @@ export class PunycodeUtils {
   }
 
   /**
-   * Normalize homographs by replacing confusable characters with their Latin equivalents.
+   * Normalize homographs by replacing confusable characters with their Latin equivalents in single pass.
    * @param {string} str 
    * @returns {string}
    */
   static normalizeHomographs(str) {
     if (!str || typeof str !== 'string') return '';
-    let output = str;
-    for (const [latinChar, lookalikes] of Object.entries(PunycodeUtils.CONFUSABLES)) {
-      for (const lookalike of lookalikes) {
-        if (output.includes(lookalike)) {
-          output = output.replaceAll(lookalike, latinChar);
-        }
-      }
-    }
-    return output;
+    const lookup = PunycodeUtils._INVERTED_CONFUSABLES;
+    return str.replace(PunycodeUtils._CONFUSABLES_REGEX, (match) => lookup.get(match) || match);
   }
 
   /**
    * Replace visual substitutions (e.g. 0->o, 1->l, @->a) and homographs with standard Latin characters.
+   * Runs in two single-pass linear replacements instead of 70 nested replaceAll passes.
    * @param {string} str 
    * @returns {string}
    */
   static replaceSubstitutions(str) {
     if (!str || typeof str !== 'string') return '';
-    let output = PunycodeUtils.normalizeHomographs(str.toLowerCase());
-    for (const [sub, target] of Object.entries(PunycodeUtils.CHAR_SUBSTITUTIONS)) {
-      output = output.replaceAll(sub, target);
-    }
-    return output;
+    const homographClean = PunycodeUtils.normalizeHomographs(str.toLowerCase());
+    const subs = PunycodeUtils.CHAR_SUBSTITUTIONS;
+    return homographClean.replace(PunycodeUtils._SUBSTITUTIONS_REGEX, (match) => subs[match] || match);
   }
 }

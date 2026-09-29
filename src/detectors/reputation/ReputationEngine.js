@@ -1,11 +1,13 @@
 /**
  * Reputation Engine Module
- * Modular reputation lookup engine supporting offline lists and pluggable cloud API adapters (disabled by default).
+ * Modular reputation lookup engine powered by an O(L) Suffix Domain Trie
+ * and pluggable threat reputation providers.
  * @module ReputationEngine
  */
 
 import { DetectorInterface } from '../../plugins/DetectorInterface.js';
 import { MultiLayerCache } from '../../cache/MultiLayerCache.js';
+import { DomainTrie } from '../../utils/DomainTrie.js';
 
 /**
  * Reputation Provider Interface Contract
@@ -22,8 +24,9 @@ export class ReputationEngine extends DetectorInterface {
     /** @type {Map<string, ReputationProvider>} */
     this.providers = new Map();
 
-    /** @type {Set<string>} Offline high-risk blocklist */
-    this.offlineBlocklist = new Set([
+    /** @type {DomainTrie} Suffix Trie for O(L) domain & wildcard subdomain lookups */
+    this.blocklistTrie = new DomainTrie();
+    this.blocklistTrie.insertAll([
       'phishing-test-domain.com',
       'malicious-login-fake.net',
       'account-verification-alert.org'
@@ -40,7 +43,15 @@ export class ReputationEngine extends DetectorInterface {
   }
 
   /**
-   * Register a external cloud reputation provider (e.g. VirusTotal, Safe Browsing, PhishTank).
+   * Add a domain to the offline blocklist trie.
+   * @param {string} domain 
+   */
+  addBlockedDomain(domain) {
+    this.blocklistTrie.insert(domain);
+  }
+
+  /**
+   * Register an external cloud reputation provider (e.g. VirusTotal, Safe Browsing, PhishTank).
    * NOTE: No cloud providers are registered or enabled by default to maintain 100% offline privacy.
    * @param {ReputationProvider} provider 
    */
@@ -67,27 +78,21 @@ export class ReputationEngine extends DetectorInterface {
       return this._buildResult(0, 1.0, 'LOW', [], performance.now() - startTime);
     }
 
-    // 1. Offline Local Blocklist Check (with subdomain matching)
-    let isBlocklisted = false;
-    for (const blockedDomain of this.offlineBlocklist) {
-      if (hostname === blockedDomain || hostname.endsWith('.' + blockedDomain)) {
-        isBlocklisted = true;
-        break;
-      }
-    }
-
-    if (isBlocklisted) {
+    // 1. High-Performance Suffix Trie Match O(L)
+    const trieResult = this.blocklistTrie.match(hostname);
+    if (trieResult.matched) {
       findings.push({
         id: 'REPUTATION_OFFLINE_BLOCKLIST',
         type: 'KNOWN_MALICIOUS_DOMAIN',
-        description: `Domain '${hostname}' is present on the offline security blocklist.`,
+        description: `Domain '${hostname}' matched blocked signature '${trieResult.ruleDomain}' on the offline security blocklist.`,
         score: 100,
-        severity: 'CRITICAL'
+        severity: 'CRITICAL',
+        metadata: { matchedRule: trieResult.ruleDomain }
       });
       totalScore = 100;
     }
 
-    // 2. Cached Reputation Check
+    // 2. Cached Reputation Check O(1)
     const cached = this.cache.get(hostname);
     if (cached && cached.isMalicious) {
       findings.push({
@@ -100,11 +105,35 @@ export class ReputationEngine extends DetectorInterface {
       totalScore = 100;
     }
 
+    // 3. Pluggable Providers (if any registered and enabled)
+    if (totalScore < 100 && this.providers.size > 0) {
+      for (const [providerName, provider] of this.providers.entries()) {
+        try {
+          const providerResult = await provider.checkURL(context.url);
+          if (providerResult && providerResult.isMalicious) {
+            findings.push({
+              id: `REPUTATION_${providerName.toUpperCase()}_HIT`,
+              type: 'EXTERNAL_THREAT_HIT',
+              description: `Threat detected by reputation provider '${providerName}'.`,
+              score: 85,
+              severity: 'CRITICAL',
+              metadata: { provider: providerName }
+            });
+            totalScore = Math.max(totalScore, 85);
+            this.cache.set(hostname, { isMalicious: true });
+            break;
+          }
+        } catch {
+          // Provider failure isolation
+        }
+      }
+    }
+
     const finalScore = Math.min(totalScore, 100);
-    const severity = finalScore >= 80 ? 'CRITICAL' : finalScore >= 50 ? 'HIGH' : 'LOW';
+    const severity = finalScore >= 80 ? 'CRITICAL' : finalScore >= 60 ? 'HIGH' : finalScore >= 40 ? 'MEDIUM' : 'LOW';
     const executionTime = parseFloat((performance.now() - startTime).toFixed(2));
 
-    return this._buildResult(finalScore, 1.0, severity, findings, executionTime);
+    return this._buildResult(finalScore, 0.98, severity, findings, executionTime);
   }
 
   /**
@@ -116,13 +145,12 @@ export class ReputationEngine extends DetectorInterface {
       confidence,
       severity,
       findings,
-      metadata: { activeProviders: Array.from(this.providers.keys()) },
+      metadata: { detector: this.name() },
       executionTime
     };
   }
 
   cleanup() {
-    // Release memory footprints
     this.cache.purgeExpired();
   }
 }
