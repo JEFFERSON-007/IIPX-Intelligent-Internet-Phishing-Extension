@@ -85,7 +85,7 @@ export class URLDetector extends DetectorInterface {
 
       // 2. IP Address Detection (IPv4 / IPv6)
       const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      const ipv6Regex = /^\[?[a-f0-9:]+\]?$/i;
+      const ipv6Regex = /^\[?[a-f0-9]*:[a-f0-9:]+\]?$/i;
       if (ipv4Regex.test(hostname) || ipv6Regex.test(hostname)) {
         findings.push({
           id: 'URL_IP_HOSTNAME',
@@ -149,8 +149,8 @@ export class URLDetector extends DetectorInterface {
 
       // 6. Typosquatting & Levenshtein Distance Check
       const normalizedHost = PunycodeUtils.replaceSubstitutions(hostname);
-      const hostLabel = hostname.split('.')[0];
-      const normalizedLabel = normalizedHost.split('.')[0];
+      const hostLabels = hostname.split(/[.-]/);
+      const normalizedLabels = normalizedHost.split(/[.-]/);
 
       for (const brand of this.legitimateDomains) {
         const targetBrand = brand.domain;
@@ -159,18 +159,34 @@ export class URLDetector extends DetectorInterface {
           continue;
         }
 
-        let minDistance = 999;
-        
-        // Fast path: skip Levenshtein if length difference is > 2
-        if (Math.abs(hostLabel.length - brandLabel.length) <= 2) {
-          const rawDistance = EntropyUtils.calculateLevenshteinDistance(hostLabel, brandLabel);
-          const normDistance = EntropyUtils.calculateLevenshteinDistance(normalizedLabel, brandLabel);
-          minDistance = Math.min(rawDistance, normDistance);
-        }
+        let isTyposquat = false;
+        let detectedEditDistance = 999;
 
-        const isTyposquat = (minDistance > 0 && minDistance <= 2) || 
-                            (normalizedLabel === brandLabel && hostLabel !== brandLabel) ||
-                            (normalizedHost.includes(brandLabel) && !hostname.endsWith('.' + targetBrand) && hostname !== targetBrand);
+        // Check each label/token in hostname for brand typosquatting
+        for (let i = 0; i < hostLabels.length; i++) {
+          const rawLabel = hostLabels[i];
+          const normLabel = normalizedLabels[i] || rawLabel;
+
+          // Skip top-level domains like 'com', 'org', etc.
+          if (rawLabel.length <= 3 && i === hostLabels.length - 1) continue;
+
+          let minDistance = 999;
+          if (Math.abs(rawLabel.length - brandLabel.length) <= 2) {
+            const rawDistance = EntropyUtils.calculateLevenshteinDistance(rawLabel, brandLabel);
+            const normDistance = EntropyUtils.calculateLevenshteinDistance(normLabel, brandLabel);
+            minDistance = Math.min(rawDistance, normDistance);
+          }
+
+          if (
+            (minDistance > 0 && minDistance <= 2) ||
+            (normLabel === brandLabel && rawLabel !== brandLabel) ||
+            (rawLabel === brandLabel && !hostname.endsWith('.' + targetBrand))
+          ) {
+            isTyposquat = true;
+            detectedEditDistance = minDistance;
+            break;
+          }
+        }
 
         if (isTyposquat) {
           findings.push({
@@ -179,7 +195,7 @@ export class URLDetector extends DetectorInterface {
             description: `Domain '${hostname}' is a potential typosquatting clone of '${targetBrand}'.`,
             score: 35,
             severity: 'HIGH',
-            metadata: { targetBrand, editDistance: minDistance }
+            metadata: { targetBrand, editDistance: detectedEditDistance }
           });
           totalScore += 35;
           break;

@@ -8,10 +8,14 @@ import { RiskFusionEngine } from '../../core/fusion/RiskFusionEngine.js';
 export function testRiskFusionEngine() {
   const fusion = new RiskFusionEngine();
 
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
+  }
+
   // Test 1: Empty input returns SAFE
   const res1 = fusion.fuse([]);
-  console.assert(res1.riskScore === 0, 'Test Failed: Empty score expected 0');
-  console.assert(res1.classification === 'SAFE', 'Test Failed: Classification expected SAFE');
+  assert(res1.riskScore === 0, `Test Failed: Empty score expected 0, got ${res1.riskScore}`);
+  assert(res1.classification === 'SAFE', `Test Failed: Classification expected SAFE, got ${res1.classification}`);
 
   // Test 2: High score fusion
   const mockOutputs = [
@@ -19,8 +23,8 @@ export function testRiskFusionEngine() {
     { name: 'FormDetector', result: { score: 40, confidence: 0.9, severity: 'MEDIUM', findings: [] } }
   ];
   const res2 = fusion.fuse(mockOutputs);
-  console.assert(res2.riskScore >= 60, 'Test Failed: High risk score expected');
-  console.assert(res2.detectorsTriggered.includes('URLDetector'), 'Test Failed: Detector trigger missing');
+  assert(res2.riskScore >= 60, `Test Failed: High risk score expected >= 60, got ${res2.riskScore}`);
+  assert(res2.detectorsTriggered.includes('URLDetector'), 'Test Failed: Detector trigger missing');
 
   return true;
 }

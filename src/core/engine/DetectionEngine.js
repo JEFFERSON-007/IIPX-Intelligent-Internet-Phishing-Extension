@@ -66,9 +66,10 @@ export class DetectionEngine {
     // 3. Execute detectors in parallel with fault isolation & timeout protection
     const promises = detectors.map(async (detector) => {
       const dStart = performance.now();
+      let timerId;
       try {
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Detector ${detector.name()} timed out after 2000ms`)), 2000);
+          timerId = setTimeout(() => reject(new Error(`Detector ${detector.name()} timed out after 2000ms`)), 2000);
         });
 
         const res = await Promise.race([detector.analyze(context), timeoutPromise]);
@@ -79,6 +80,8 @@ export class DetectionEngine {
         // eslint-disable-next-line no-console
         console.error(`Error executing detector ${detector.name()}:`, err);
         return null;
+      } finally {
+        if (timerId) clearTimeout(timerId);
       }
     });
 

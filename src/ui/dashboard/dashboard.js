@@ -155,8 +155,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (auditFeedTbody) auditFeedTbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:32px;" class="text-muted">Feed cleared.</td></tr>';
   });
 
+  // Policy rules
+  const btnAddRule = document.getElementById('btn-add-rule');
+  const policyRulesTbody = document.getElementById('policy-rules-tbody');
+
+  const defaultPolicies = [
+    { pattern: '*.google.com', action: 'Allow', source: 'System', time: 'Permanent' },
+    { pattern: '*.paypal.com', action: 'Allow', source: 'System', time: 'Permanent' },
+    { pattern: '*.microsoft.com', action: 'Allow', source: 'System', time: 'Permanent' },
+    { pattern: 'login-update-secure.net', action: 'Block', source: 'Enterprise', time: 'Active' },
+  ];
+
+  function renderPolicies() {
+    if (!policyRulesTbody) return;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['custom_policies'], (data) => {
+        const custom = data.custom_policies || [];
+        const allPolicies = [...defaultPolicies, ...custom];
+        policyRulesTbody.innerHTML = allPolicies.map(p => `
+          <tr>
+            <td><code class="code-block">${p.pattern}</code></td>
+            <td><span class="badge ${p.action === 'Allow' ? 'safe' : 'danger'}">${p.action}</span></td>
+            <td>${p.source}</td>
+            <td class="text-muted">${p.time}</td>
+          </tr>
+        `).join('');
+      });
+    } else {
+      policyRulesTbody.innerHTML = defaultPolicies.map(p => `
+        <tr>
+          <td><code class="code-block">${p.pattern}</code></td>
+          <td><span class="badge ${p.action === 'Allow' ? 'safe' : 'danger'}">${p.action}</span></td>
+          <td>${p.source}</td>
+          <td class="text-muted">${p.time}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  btnAddRule?.addEventListener('click', () => {
+    const pattern = prompt('Enter domain pattern to configure (e.g. secure.internal.corp or suspicious-site.com):');
+    if (!pattern || !pattern.trim()) return;
+    const isBlock = confirm(`Click OK to BLOCK '${pattern.trim()}', or Cancel to ALLOW it.`);
+    const newRule = {
+      pattern: pattern.trim(),
+      action: isBlock ? 'Block' : 'Allow',
+      source: 'User',
+      time: 'Just now'
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['custom_policies'], (data) => {
+        const custom = data.custom_policies || [];
+        custom.push(newRule);
+        chrome.storage.local.set({ custom_policies: custom }, () => {
+          renderPolicies();
+        });
+      });
+    } else {
+      defaultPolicies.push(newRule);
+      renderPolicies();
+    }
+  });
+
   // Init
   renderDetectorCards();
   renderPerformanceMeters();
   renderAuditFeed();
+  renderPolicies();
 });

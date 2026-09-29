@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     requestAnimationFrame(animateScore);
     setRing(score);
 
-    const type = score >= 80 ? 'danger' : score >= 40 ? 'warn' : 'safe';
+    const type = score >= 60 ? 'danger' : score >= 40 ? 'warn' : 'safe';
     const label = result.classification || (score >= 80 ? 'Critical' : score >= 60 ? 'High Risk' : score >= 40 ? 'Suspicious' : 'Safe');
     setStatus(label, type);
 
@@ -156,10 +156,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     setSignal('dom',  triggered.includes('DOMDetector'));
     setSignal('behavior', triggered.includes('BehaviorDetector'));
 
-    if (result.reasons && result.reasons.length > 0) {
+    if (score > 0 && result.reasons && result.reasons.length > 0 && result.classification !== 'SAFE') {
+      const strokeColor = score >= 60 ? 'var(--danger)' : 'var(--warn)';
       findingsList.innerHTML = result.reasons.map(r =>
         `<div class="finding-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${strokeColor}" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>

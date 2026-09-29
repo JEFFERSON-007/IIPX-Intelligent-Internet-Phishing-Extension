@@ -136,6 +136,8 @@ function updateBadge(tabId, score) {
   chrome.action.setBadgeText({ tabId, text });
 }
 
+let cachedStats = null;
+
 /**
  * Increment scanning stats in storage.
  * @param {number} scannedDelta 
@@ -143,15 +145,24 @@ function updateBadge(tabId, score) {
  */
 async function incrementStats(scannedDelta, blockedDelta) {
   try {
-    const data = await storage.get(['phishing_detector_stats']);
-    const stats = data.phishing_detector_stats || { sitesScanned: 0, threatsBlocked: 0 };
-    stats.sitesScanned += scannedDelta;
-    stats.threatsBlocked += blockedDelta;
-    await storage.debouncedSet({ phishing_detector_stats: stats }, 2000);
+    if (!cachedStats) {
+      const data = await storage.get(['phishing_detector_stats']);
+      cachedStats = data.phishing_detector_stats || { sitesScanned: 0, threatsBlocked: 0, lastReset: new Date().toISOString() };
+    }
+    cachedStats.sitesScanned += scannedDelta;
+    cachedStats.threatsBlocked += blockedDelta;
+    await storage.debouncedSet({ phishing_detector_stats: { ...cachedStats } }, 2000);
   } catch {}
 }
 
-// 3. Suspend Listener for State Cleanup
+// 3. Tab Cleanup Listener (Prevent memory leaks when tabs are closed)
+if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    tabSecurityState.delete(tabId);
+  });
+}
+
+// 4. Suspend Listener for State Cleanup
 if (typeof chrome !== 'undefined' && chrome.runtime?.onSuspend) {
   chrome.runtime.onSuspend.addListener(() => {
     storage.flush();

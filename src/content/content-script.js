@@ -41,7 +41,9 @@
         type: input.type || 'text',
         name: input.name || '',
         id: input.id || '',
-        isHidden: input.type === 'hidden' || input.style.display === 'none'
+        placeholder: input.placeholder || '',
+        isHidden: input.type === 'hidden' || input.style.display === 'none' || input.style.visibility === 'hidden',
+        isOffScreen: (input.offsetWidth === 0 && input.offsetHeight === 0)
       }))
     }));
 
@@ -58,6 +60,7 @@
     // Avoid expensive querySelectorAll('div, section') for overlays
     // Check direct children of body only for overlay heuristics
     const overlays = Array.from(document.body ? document.body.children : []).filter(node => {
+      if (node.id === 'phishing-detector-root') return false; // Ignore extension's own warning overlay
       if (node.tagName !== 'DIV' && node.tagName !== 'SECTION') return false;
       const style = window.getComputedStyle(node);
       return (style.position === 'fixed' || style.position === 'absolute') &&
@@ -182,7 +185,11 @@
     }
 
     shadow.getElementById('btn-back').addEventListener('click', () => {
-      window.history.back();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.close();
+      }
     });
 
     shadow.getElementById('btn-proceed').addEventListener('click', () => {

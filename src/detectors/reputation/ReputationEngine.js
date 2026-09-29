@@ -67,16 +67,24 @@ export class ReputationEngine extends DetectorInterface {
       return this._buildResult(0, 1.0, 'LOW', [], performance.now() - startTime);
     }
 
-    // 1. Offline Local Blocklist Check
-    if (this.offlineBlocklist.has(hostname)) {
+    // 1. Offline Local Blocklist Check (with subdomain matching)
+    let isBlocklisted = false;
+    for (const blockedDomain of this.offlineBlocklist) {
+      if (hostname === blockedDomain || hostname.endsWith('.' + blockedDomain)) {
+        isBlocklisted = true;
+        break;
+      }
+    }
+
+    if (isBlocklisted) {
       findings.push({
         id: 'REPUTATION_OFFLINE_BLOCKLIST',
         type: 'KNOWN_MALICIOUS_DOMAIN',
         description: `Domain '${hostname}' is present on the offline security blocklist.`,
-        score: 50,
+        score: 100,
         severity: 'CRITICAL'
       });
-      totalScore += 50;
+      totalScore = 100;
     }
 
     // 2. Cached Reputation Check
@@ -86,10 +94,10 @@ export class ReputationEngine extends DetectorInterface {
         id: 'REPUTATION_CACHED_MATCH',
         type: 'KNOWN_MALICIOUS_DOMAIN',
         description: `Domain '${hostname}' matched known threat reputation cache.`,
-        score: 50,
+        score: 100,
         severity: 'CRITICAL'
       });
-      totalScore += 50;
+      totalScore = 100;
     }
 
     const finalScore = Math.min(totalScore, 100);

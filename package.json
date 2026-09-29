@@ -1,0 +1,20 @@
+{
+  "name": "iipx-phishing-extension",
+  "version": "2.0.0",
+  "description": "IIPX - Intelligent Internet Phishing Extension: Privacy-first, real-time phishing and scam detection.",
+  "type": "module",
+  "scripts": {
+    "test": "node src/tests/run-all-tests.js"
+  },
+  "keywords": [
+    "phishing",
+    "security",
+    "chrome-extension",
+    "browser-extension",
+    "manifest-v3",
+    "cybersecurity",
+    "antiphishing"
+  ],
+  "author": "JEFFERSON-007",
+  "license": "MIT"
+}

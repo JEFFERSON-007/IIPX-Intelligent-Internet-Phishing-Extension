@@ -29,11 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('score-val').textContent = score;
   document.getElementById('target-url').textContent = targetUrl;
   
-  // Set reason without extra div wrapper to match new CSS
-  document.getElementById('reasons-list').innerHTML = escapeHTML(decodeURIComponent(reason));
+  // URLSearchParams automatically decodes query params; escapeHTML prevents XSS without throwing URIError
+  document.getElementById('reasons-list').innerHTML = escapeHTML(reason);
 
   document.getElementById('btn-back')?.addEventListener('click', () => {
-    window.history.back();
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.close();
+    }
   });
 
   document.getElementById('btn-proceed')?.addEventListener('click', () => {

@@ -72,12 +72,13 @@ export class DetectionScheduler {
 
       const promises = tierDetectors.map(async (detector) => {
         const dStart = performance.now();
+        let timerId;
         try {
           // Timeout execution per detector
           const timeoutMs = tierIndex === 0 ? 500 : 2000;
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error(`Timeout ${timeoutMs}ms`)), timeoutMs)
-          );
+          const timeoutPromise = new Promise((_, reject) => {
+            timerId = setTimeout(() => reject(new Error(`Timeout ${timeoutMs}ms`)), timeoutMs);
+          });
           
           const res = await Promise.race([detector.analyze(context), timeoutPromise]);
           detectorTimings[detector.name()] = parseFloat((performance.now() - dStart).toFixed(2));
@@ -85,6 +86,8 @@ export class DetectionScheduler {
         } catch (err) {
           console.warn(`Detector ${detector.name()} failed or timed out:`, err);
           return null;
+        } finally {
+          if (timerId) clearTimeout(timerId);
         }
       });
 

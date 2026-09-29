@@ -32,9 +32,13 @@ export async function testDetectionPipeline() {
 
   const result = await engine.analyze(context);
 
-  console.assert(result.riskScore >= 60, 'Pipeline Test Failed: Expected score >= 60');
-  console.assert(result.classification === 'HIGH' || result.classification === 'CRITICAL', 'Pipeline Test Failed: Expected HIGH or CRITICAL');
-  console.assert(result.reasons.length > 0, 'Pipeline Test Failed: Expected explanation reasons');
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
+  }
+
+  assert(result.riskScore >= 60, `Pipeline Test Failed: Expected score >= 60, got ${result.riskScore}`);
+  assert(result.classification === 'HIGH' || result.classification === 'CRITICAL', `Pipeline Test Failed: Expected HIGH or CRITICAL, got ${result.classification}`);
+  assert(result.reasons.length > 0, 'Pipeline Test Failed: Expected explanation reasons');
 
   return true;
 }
