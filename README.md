@@ -4,14 +4,14 @@
 
 [![Manifest V3](https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Privacy First](https://img.shields.io/badge/Privacy-100%25%20Offline%20%2F%20Local-success.svg)](#privacy--security-guarantees)
-[![Architecture](https://img.shields.io/badge/Architecture-Tiered%20Multi--Engine-orange.svg)](#-the-engines-breakdown)
+[![Architecture](https://img.shields.io/badge/Architecture-Tiered%20Multi--Engine-orange.svg)](#the-engines-breakdown)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero%20Data%20Collected-brightgreen.svg)](#design-philosophy)
 
 **IIPX** is an offline-first browser security extension engineered to detect phishing, credential harvesting, brand spoofing, and malicious websites in real time. Running exclusively inside client-side browser runtimes, IIPX inspects web traffic, domain structures, and live DOM behaviors locally—protecting users before harm occurs **without ever sending browsing history, passwords, or URLs to third-party servers**.
 
 ---
 
-## 💡 What Makes IIPX Different?
+## What Makes IIPX Different?
 
 | Feature | Traditional Security Extensions | IIPX (Intelligent Internet Phishing Extension) |
 | :--- | :--- | :--- |
@@ -23,28 +23,28 @@
 
 ---
 
-## 🎯 Design Philosophy
+## Design Philosophy
 
 IIPX adheres to strict architectural and operational principles:
 
-* **🛡️ Privacy-First Protection:** Analyze locally. Warn intelligently. Protect before harm occurs.
-* **⚡ Low Latency & High Performance:** Tiered execution, debounced DOM mutation observers, and multi-layer LRU caching ensure zero perceptible impact on browsing speed.
-* **🔍 Explainable AI & Heuristics:** Risk scores and threat classifications are grounded in verifiable findings with natural-language evidence.
-* **🔒 Manifest V3 Native:** Built from the ground up for modern browser security standards using event-driven Service Workers and strict Content Security Policies (CSP).
-* **🧩 Modular Plugin Architecture:** 9 independent security detector plugins coordinated through a prioritized scheduler and dynamic fusion engine.
+* **Privacy-First Protection:** Analyze locally. Warn intelligently. Protect before harm occurs.
+* **Low Latency & High Performance:** Tiered execution, debounced DOM mutation observers, and multi-layer LRU caching ensure zero perceptible impact on browsing speed.
+* **Explainable AI & Heuristics:** Risk scores and threat classifications are grounded in verifiable findings with natural-language evidence.
+* **Manifest V3 Native:** Built from the ground up for modern browser security standards using event-driven Service Workers and strict Content Security Policies (CSP).
+* **Modular Plugin Architecture:** 9 independent security detector plugins coordinated through a prioritized scheduler and dynamic fusion engine.
 
 ---
 
-## 🏗️ Architecture & Detection Flow
+## Architecture & Detection Flow
 
 IIPX processes web traffic through a prioritized, three-tier detection pipeline designed with **early-exit capabilities** to maximize protection while minimizing CPU and battery usage:
 
 ```mermaid
 flowchart TD
-    Nav["🌐 Browser Navigation Event (onBeforeNavigate)"] --> EPE{"1. Enterprise Policy Engine"}
+    Nav["Browser Navigation Event (onBeforeNavigate)"] --> EPE{"1. Enterprise Policy Engine"}
     
-    EPE -->|Domain Whitelisted| Allow["✅ Instant Allow (0ms - Skip Checks)"]
-    EPE -->|Domain Blocked| Block["🛑 Block Immediately (Show Warning Page)"]
+    EPE -->|Domain Whitelisted| Allow["Instant Allow (0ms - Skip Checks)"]
+    EPE -->|Domain Blocked| Block["Block Immediately (Show Warning Page)"]
     
     EPE -->|No Policy Override| Tier0["2. Tier 0: Fast Pre-Flight Checks\n(ReputationEngine + URLDetector)"]
     
@@ -59,28 +59,29 @@ flowchart TD
     
     Fusion --> XAI["6. ExplainableAIEngine\n(Maps findings to human-readable explanations)"]
     
-    XAI --> Action{"Final Risk Score"}
-    Action -->|0 – 39: Safe / Low| SafeBrowsing["🟢 Normal Browsing (Update Popup Badge)"]
-    Action -->|40 – 59: Medium| PassiveBadge["🟡 Warning Indicator on Toolbar Badge"]
-    Action -->|60 – 79: High| Overlay["🟠 Inject Shadow DOM Warning Banner"]
+    Action{"Final Risk Score"}
+    Fusion --> Action
+    Action -->|0 – 39: Safe / Low| SafeBrowsing["Normal Browsing (Update Popup Badge)"]
+    Action -->|40 – 59: Medium| PassiveBadge["Warning Indicator on Toolbar Badge"]
+    Action -->|60 – 79: High| Overlay["Inject Shadow DOM Warning Banner"]
     Action -->|80 – 100: Critical| Block
 ```
 
 ---
 
-## ⚙️ The Engines Breakdown
+## The Engines Breakdown
 
 The core logic of IIPX is divided into **Core Pipeline Engines** (orchestration, risk scoring, explainability) and **Specialized Detection Engines** (the modular security plugins).
 
 ### 1. Core Pipeline Engines
 
-* **🏢 EnterprisePolicyEngine (`src/core/policy/`):**  
+* **EnterprisePolicyEngine (`src/core/policy/`):**  
   The first gatekeeper. Evaluates corporate allowlists, custom domain rules, and user overrides stored in `chrome.storage.local`. If a trusted domain is accessed, all heuristics are skipped instantly.
-* **⏱️ DetectionScheduler & DetectionEngine (`src/core/engine/`):**  
+* **DetectionScheduler & DetectionEngine (`src/core/engine/`):**  
   Orchestrates all detector modules across prioritized execution tiers. Wraps every detector in strict timeouts (`Promise.race`) so a slow or hanging detector can never freeze the browser.
-* **🧮 RiskFusionEngine (`src/core/fusion/`):**  
+* **RiskFusionEngine (`src/core/fusion/`):**  
   Aggregates multiple detector findings into a normalized `0–100` risk score. Uses **dynamic confidence weighting**, prevents score dilution from safe detectors when severe threats exist, and applies **synergy boosts** when correlated attacks fire together (e.g., typosquatted domain + unencrypted password field).
-* **💬 ExplainableAIEngine (`src/core/xai/`):**  
+* **ExplainableAIEngine (`src/core/xai/`):**  
   Translates raw threat signals into transparent, plain-English reasons (e.g., *"Form posts passwords to an insecure HTTP endpoint"*, *"Domain uses Cyrillic homograph spoofing"*). Eliminates AI hallucination by binding explanations directly to verified finding IDs.
 
 ---
@@ -103,7 +104,7 @@ Each detector implements the standardized `DetectorInterface` and can be enabled
 
 ---
 
-## 📊 Risk Scoring Scale
+## Risk Scoring Scale
 
 | Score | Classification | Action Taken | UI Presentation |
 | :---: | :---: | :--- | :--- |
@@ -115,7 +116,7 @@ Each detector implements the standardized `DetectorInterface` and can be enabled
 
 ---
 
-## 🧠 Machine Learning: Do You Need an ML Model?
+## Machine Learning: Do You Need an ML Model?
 
 **No — IIPX works 100% out of the box using deterministic heuristics.**
 
@@ -129,7 +130,7 @@ However, the architecture includes an extensible **`MLAdapter`** interface (`src
 
 ---
 
-## 📁 Project Directory Structure
+## Project Directory Structure
 
 ```text
 ├── manifest.json              # Chrome Manifest V3 configuration
@@ -172,7 +173,7 @@ However, the architecture includes an extensible **`MLAdapter`** interface (`src
 
 ---
 
-## 🧪 Running the Test Suite
+## Running the Test Suite
 
 IIPX includes an automated test suite verifying URL parsing, homograph decoding, typosquatting logic, synergy boosts, and score fusion:
 
@@ -186,7 +187,7 @@ node src/tests/run-all-tests.js
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 ### Google Chrome / Microsoft Edge / Brave / Opera
 
@@ -204,7 +205,7 @@ node src/tests/run-all-tests.js
 
 ---
 
-## 🔒 Privacy & Security Guarantees
+## Privacy & Security Guarantees
 
 * **Zero Remote Telemetry:** No user analytics, no tracking pixels, and no browsing logs are transmitted.
 * **Strict CSP:** The extension does not load remote scripts, executable blobs, or external stylesheets.
@@ -215,5 +216,5 @@ node src/tests/run-all-tests.js
 ## Recent Activity
 
 <!--START_SECTION:activity-->
-1. 🗣 Commented on [#3121](https://github.com/sherlock-project/sherlock/issues/3121#issuecomment-5868705024) in [sherlock-project/sherlock](https://github.com/sherlock-project/sherlock)
+1. Commented on [#3121](https://github.com/sherlock-project/sherlock/issues/3121#issuecomment-5868705024) in [sherlock-project/sherlock](https://github.com/sherlock-project/sherlock)
 <!--END_SECTION:activity-->
