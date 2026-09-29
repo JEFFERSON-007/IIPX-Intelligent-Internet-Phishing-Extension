@@ -19,15 +19,23 @@
     requestedSensitiveAPIs: []
   };
 
-  // Listen for context menu restrictions
-  document.addEventListener('contextmenu', () => {
-    behavioralFlags.rightClickDisabled = true;
-  }, true);
+  // Listen for context menu restrictions (only flag if the page actually blocked the context menu)
+  document.addEventListener('contextmenu', (e) => {
+    setTimeout(() => {
+      if (e.defaultPrevented) {
+        behavioralFlags.rightClickDisabled = true;
+      }
+    }, 0);
+  }, false);
 
-  // Listen for clipboard events
-  document.addEventListener('copy', () => {
-    behavioralFlags.clipboardAccess = true;
-  }, true);
+  // Listen for clipboard manipulation (only flag if copy was intercepted/cancelled by page scripts)
+  document.addEventListener('copy', (e) => {
+    setTimeout(() => {
+      if (e.defaultPrevented) {
+        behavioralFlags.clipboardAccess = true;
+      }
+    }, 0);
+  }, false);
 
   /**
    * Fast, targeted extraction of DOM context. Avoids global node traversal.
@@ -67,8 +75,9 @@
              (parseInt(style.zIndex, 10) > 9999);
     }).map(() => ({ isOverlay: true }));
 
-    const scripts = Array.from(document.scripts || []).map(script => ({
-      src: script.src || script.getAttribute('src') || ''
+    const scripts = Array.from(document.scripts || []).slice(0, 30).map(script => ({
+      src: script.src || script.getAttribute('src') || '',
+      textContent: (!script.src && script.textContent) ? script.textContent.substring(0, 2048) : ''
     }));
 
     return {

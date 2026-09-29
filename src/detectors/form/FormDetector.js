@@ -56,9 +56,9 @@ export class FormDetector extends DetectorInterface {
       // 2. Cross-Domain Form Action Target
       if (action && action.startsWith('http')) {
         try {
-          const actionHost = new URL(action).hostname;
-          const pageHost = new URL(pageUrl).hostname;
-          if (actionHost !== pageHost) {
+          const actionHost = new URL(action).hostname.toLowerCase();
+          const pageHost = new URL(pageUrl).hostname.toLowerCase();
+          if (actionHost && pageHost && !this._isSameRegistrableDomain(actionHost, pageHost)) {
             findings.push({
               id: 'FORM_EXTERNAL_ACTION',
               type: 'CROSS_DOMAIN_FORM',
@@ -192,6 +192,29 @@ export class FormDetector extends DetectorInterface {
         inputs
       };
     });
+  }
+
+  /**
+   * Check if two hostnames share the same effective registrable domain.
+   * Handles common compound ccTLDs (e.g. .co.uk, .com.au, .org.uk) and standard TLDs.
+   * @private
+   * @param {string} h1
+   * @param {string} h2
+   * @returns {boolean}
+   */
+  _isSameRegistrableDomain(h1, h2) {
+    if (h1 === h2) return true;
+    const getRoot = (host) => {
+      const parts = host.split('.');
+      if (parts.length <= 2) return host;
+      const tld = parts[parts.length - 1];
+      const sld = parts[parts.length - 2];
+      if (tld.length === 2 && (sld.length <= 3 && ['co', 'com', 'org', 'net', 'gov', 'edu'].includes(sld))) {
+        return parts.slice(-3).join('.');
+      }
+      return parts.slice(-2).join('.');
+    };
+    return getRoot(h1) === getRoot(h2);
   }
 
   cleanup() {

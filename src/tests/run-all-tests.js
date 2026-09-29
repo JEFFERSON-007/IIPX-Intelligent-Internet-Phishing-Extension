@@ -15,6 +15,9 @@ import { RiskFusionEngine } from '../core/fusion/RiskFusionEngine.js';
 import { DomainTrie } from '../utils/DomainTrie.js';
 import { EntropyUtils } from '../utils/EntropyUtils.js';
 import { PunycodeUtils } from '../utils/PunycodeUtils.js';
+import { FormDetector } from '../detectors/form/FormDetector.js';
+import { BrandImpersonationDetector } from '../detectors/brand/BrandImpersonationDetector.js';
+import { EnterprisePolicyEngine } from '../core/policy/EnterprisePolicyEngine.js';
 
 export async function runAllTests() {
   console.log('🧪 Starting Phishing Extension Test Suite...\n');
@@ -185,13 +188,87 @@ export async function runAllTests() {
   });
 
   await assertAsync('BrandImpersonationDetector: Domain Keyword Spoofing', async () => {
-    const BrandImpersonationDetectorModule = await import('../detectors/brand/BrandImpersonationDetector.js');
-    const detector = new BrandImpersonationDetectorModule.BrandImpersonationDetector();
+    const detector = new BrandImpersonationDetector();
     const result = await detector.analyze({ url: 'http://paypal-security-update.com/login', title: 'Security Alert' });
     if (result.score < 30) throw new Error(`Expected score >= 30, got ${result.score}`);
     if (!result.findings.some(f => f.type === 'BRAND_DOMAIN_SPOOFING')) {
       throw new Error('Expected BRAND_DOMAIN_SPOOFING finding missing');
     }
+  });
+
+  await assertAsync('BrandImpersonationDetector: News Article Exemption vs Fake Login Detection', async () => {
+    const detector = new BrandImpersonationDetector();
+
+    // 1. Legitimate news article mentioning Google without login forms
+    const newsResult = await detector.analyze({
+      url: 'https://thetechnewsblog.com/articles/google-ai-update',
+      title: 'Google announces massive breakthrough in AI',
+      forms: []
+    });
+    if (newsResult.score !== 0) {
+      throw new Error(`Expected score 0 for news article, got ${newsResult.score}`);
+    }
+
+    // 2. Fake Google login portal on external domain with password field
+    const phishResult = await detector.analyze({
+      url: 'https://thetechnewsblog.com/fake-login',
+      title: 'Sign in - Google Accounts',
+      forms: [{
+        action: 'https://thetechnewsblog.com/post',
+        inputs: [{ type: 'password', name: 'Passwd' }]
+      }]
+    });
+    if (phishResult.score < 30) {
+      throw new Error(`Expected score >= 30 for fake login portal, got ${phishResult.score}`);
+    }
+  });
+
+  await assertAsync('FormDetector: Same Registrable Domain Subdomain Exemption', async () => {
+    const detector = new FormDetector();
+
+    // 1. Same-root subdomains: login.example.com posting to api.example.com
+    const sameRootResult = await detector.analyze({
+      url: 'https://login.example.com/signin',
+      forms: [{
+        action: 'https://api.example.com/v1/auth',
+        inputs: [{ type: 'password', name: 'password' }]
+      }]
+    });
+    if (sameRootResult.findings.some(f => f.id === 'FORM_EXTERNAL_ACTION')) {
+      throw new Error('Same root domain subdomains should not trigger FORM_EXTERNAL_ACTION');
+    }
+
+    // 2. Malicious cross-domain: mybank.com posting to external evil-server.com
+    const externalResult = await detector.analyze({
+      url: 'https://mybank.com/portal',
+      forms: [{
+        action: 'https://evil-server.com/collect',
+        inputs: [{ type: 'password', name: 'password' }]
+      }]
+    });
+    if (!externalResult.findings.some(f => f.id === 'FORM_EXTERNAL_ACTION')) {
+      throw new Error('External third-party domain should trigger FORM_EXTERNAL_ACTION');
+    }
+  });
+
+  await assertAsync('EnterprisePolicyEngine: O(L) DomainTrie Whitelist & Blacklist Evaluation', () => {
+    const policy = new EnterprisePolicyEngine();
+
+    // Whitelist exact and subdomain matches
+    const wlExact = policy.evaluate({ url: 'https://google.com/search' });
+    if (!wlExact.isOverridden || wlExact.riskScore !== 0) throw new Error('google.com should match whitelist');
+
+    const wlSub = policy.evaluate({ url: 'https://accounts.google.com/ServiceLogin' });
+    if (!wlSub.isOverridden || wlSub.riskScore !== 0) throw new Error('accounts.google.com should match whitelist');
+
+    // Dynamic addition to blacklist
+    policy.addToBlacklist('phishing-malware-test.org');
+    const blSub = policy.evaluate({ url: 'https://login.secure.phishing-malware-test.org/auth' });
+    if (!blSub.isOverridden || blSub.riskScore !== 100) throw new Error('Blocked subdomain should return score 100');
+
+    // Unrelated domain
+    const neutral = policy.evaluate({ url: 'https://random-neutral-website.org' });
+    if (neutral.isOverridden) throw new Error('Unrelated domain should not be overridden');
   });
 
   console.log(`\n========================================`);

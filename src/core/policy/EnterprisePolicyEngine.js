@@ -4,6 +4,8 @@
  * @module EnterprisePolicyEngine
  */
 
+import { DomainTrie } from '../../utils/DomainTrie.js';
+
 export class EnterprisePolicyEngine {
   constructor() {
     /** @type {Set<string>} Permanent global domain whitelist */
@@ -15,8 +17,39 @@ export class EnterprisePolicyEngine {
     /** @type {Set<string>} Permanent domain blacklist */
     this.blacklist = new Set();
 
+    /** @type {DomainTrie} Fast O(L) suffix trie for whitelist */
+    this.whitelistTrie = new DomainTrie();
+    this.whitelistTrie.insertAll(this.whitelist);
+
+    /** @type {DomainTrie} Fast O(L) suffix trie for blacklist */
+    this.blacklistTrie = new DomainTrie();
+
     /** @type {Set<string>} Session temporary allow overrides */
     this.sessionAllowedDomains = new Set();
+  }
+
+  /**
+   * Add domain to enterprise whitelist.
+   * @param {string} domain 
+   */
+  addToWhitelist(domain) {
+    if (domain) {
+      const clean = domain.toLowerCase().trim();
+      this.whitelist.add(clean);
+      this.whitelistTrie.insert(clean);
+    }
+  }
+
+  /**
+   * Add domain to enterprise blacklist.
+   * @param {string} domain 
+   */
+  addToBlacklist(domain) {
+    if (domain) {
+      const clean = domain.toLowerCase().trim();
+      this.blacklist.add(clean);
+      this.blacklistTrie.insert(clean);
+    }
   }
 
   /**
@@ -57,32 +90,31 @@ export class EnterprisePolicyEngine {
       };
     }
 
-    // 2. Enterprise Whitelist Match
-    for (const domain of this.whitelist) {
-      if (hostname === domain || hostname.endsWith('.' + domain)) {
-        return {
-          isOverridden: true,
-          riskScore: 0,
-          classification: 'SAFE',
-          reason: `Domain '${hostname}' matches verified enterprise whitelist (${domain}).`,
-          recommendation: 'Verified safe enterprise domain.'
-        };
-      }
+    // 2. Enterprise Whitelist Match (O(L) via DomainTrie)
+    const wlMatch = this.whitelistTrie.match(hostname);
+    if (wlMatch.matched) {
+      return {
+        isOverridden: true,
+        riskScore: 0,
+        classification: 'SAFE',
+        reason: `Domain '${hostname}' matches verified enterprise whitelist (${wlMatch.ruleDomain}).`,
+        recommendation: 'Verified safe enterprise domain.'
+      };
     }
 
-    // 3. Enterprise Blacklist Match
-    for (const domain of this.blacklist) {
-      if (hostname === domain || hostname.endsWith('.' + domain)) {
-        return {
-          isOverridden: true,
-          riskScore: 100,
-          classification: 'CRITICAL',
-          reason: `Domain '${hostname}' is explicitly blocked by enterprise policy (${domain}).`,
-          recommendation: 'Enterprise policy blocked domain.'
-        };
-      }
+    // 3. Enterprise Blacklist Match (O(L) via DomainTrie)
+    const blMatch = this.blacklistTrie.match(hostname);
+    if (blMatch.matched) {
+      return {
+        isOverridden: true,
+        riskScore: 100,
+        classification: 'CRITICAL',
+        reason: `Domain '${hostname}' is explicitly blocked by enterprise policy (${blMatch.ruleDomain}).`,
+        recommendation: 'Enterprise policy blocked domain.'
+      };
     }
 
     return { isOverridden: false };
   }
 }
+

@@ -60,20 +60,40 @@ export class BrandImpersonationDetector extends DetectorInterface {
       // 1. Title Impersonation (Page title claims to be brand, but host is external)
       const titleMatches = brand.keywords.filter(kw => title.includes(kw));
       if (titleMatches.length > 0) {
-        // Double check if host is completely unrelated
         const distance = EntropyUtils.calculateLevenshteinDistance(currentHost, brand.domain);
-        const score = distance <= 3 ? 35 : 20;
 
-        findings.push({
-          id: `BRAND_SPOOF_${brand.name.toUpperCase().replace(/\s+/g, '_')}`,
-          type: 'BRAND_IMPERSONATION',
-          description: `Page title references brand '${brand.name}' on untrusted domain '${currentHost}'.`,
-          score,
-          severity: score >= 35 ? 'HIGH' : 'MEDIUM',
-          metadata: { targetBrand: brand.name, legitimateDomain: brand.domain }
-        });
-        totalScore += score;
-        break;
+        // High confidence spoof if domain is close typosquat / lookalike
+        if (distance <= 3) {
+          findings.push({
+            id: `BRAND_SPOOF_${brand.name.toUpperCase().replace(/\s+/g, '_')}`,
+            type: 'BRAND_IMPERSONATION',
+            description: `Page title references brand '${brand.name}' on lookalike domain '${currentHost}'.`,
+            score: 35,
+            severity: 'HIGH',
+            metadata: { targetBrand: brand.name, legitimateDomain: brand.domain }
+          });
+          totalScore += 35;
+          break;
+        }
+
+        // On unrelated domains, only flag if page exhibits credential harvesting / login intent
+        const hasLoginIntent = /(login|sign[\s-]?in|log[\s-]?on|account|verify|portal|wallet|security|update|passcode)/i.test(title);
+        const hasCredentialForm = Array.isArray(context.forms) && context.forms.some(f =>
+          Array.isArray(f.inputs) && f.inputs.some(i => i.type === 'password' || (i.name && /pass|credential|secret/i.test(i.name)))
+        );
+
+        if (hasLoginIntent || hasCredentialForm) {
+          findings.push({
+            id: `BRAND_SPOOF_${brand.name.toUpperCase().replace(/\s+/g, '_')}`,
+            type: 'BRAND_IMPERSONATION',
+            description: `Page title mimics '${brand.name}' authentication portal on untrusted domain '${currentHost}'.`,
+            score: 30,
+            severity: 'HIGH',
+            metadata: { targetBrand: brand.name, legitimateDomain: brand.domain }
+          });
+          totalScore += 30;
+          break;
+        }
       }
 
       // 2. Hostname Keyword Spoofing (Domain embeds brand label as distinct token on untrusted host)
